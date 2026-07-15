@@ -8,10 +8,22 @@ const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Paths
+// Paths & platform detection
 const projectRoot = path.resolve(__dirname, '..');
 const binDir = path.join(projectRoot, 'bin');
-const ytDlpPath = path.join(binDir, 'yt-dlp.exe');
+
+let ytDlpFilename = 'yt-dlp';
+let ytDlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+
+if (process.platform === 'win32') {
+  ytDlpFilename = 'yt-dlp.exe';
+  ytDlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe';
+} else if (process.platform === 'darwin') {
+  ytDlpFilename = 'yt-dlp_macos';
+  ytDlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos';
+}
+
+const ytDlpPath = path.join(binDir, ytDlpFilename);
 
 // Get FFMPEG path from ffmpeg-static package
 let ffmpegPath = '';
@@ -80,18 +92,30 @@ export async function ensureBinaries(progressCallback) {
     fs.mkdirSync(binDir, { recursive: true });
   }
 
-  // Check if yt-dlp.exe already exists
+  // Check if yt-dlp binary already exists
   if (fs.existsSync(ytDlpPath)) {
-    console.log('yt-dlp.exe is already present.');
+    console.log(`${ytDlpFilename} is already present.`);
+    // Ensure execution permissions on Unix-like systems
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(ytDlpPath, 0o755);
+      } catch (err) {
+        console.warn('Failed to ensure execute permissions on existing binary:', err);
+      }
+    }
     return { ytDlpPath, ffmpegPath, status: 'ready' };
   }
 
-  console.log('Downloading yt-dlp.exe...');
-  const ytDlpUrl = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe';
+  console.log(`Downloading ${ytDlpFilename}...`);
   
   try {
     await downloadFile(ytDlpUrl, ytDlpPath, progressCallback);
-    console.log('yt-dlp.exe downloaded successfully.');
+    console.log(`${ytDlpFilename} downloaded successfully.`);
+    // Ensure execution permissions on Unix-like systems
+    if (process.platform !== 'win32') {
+      fs.chmodSync(ytDlpPath, 0o755);
+      console.log(`Set execute permission (+x) for ${ytDlpFilename}`);
+    }
     return { ytDlpPath, ffmpegPath, status: 'downloaded' };
   } catch (error) {
     console.error('Error downloading yt-dlp:', error);

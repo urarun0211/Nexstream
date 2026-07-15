@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Platform-specific binaries
+bin/yt-dlp
+bin/yt-dlp_macos
