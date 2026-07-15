@@ -332,6 +332,8 @@ app.get('/api/info', async (req, res) => {
               });
             }
           }
+        });
+
         if (cleanFormats.length === 0) {
           cleanFormats.push({
             formatId: 'best',
