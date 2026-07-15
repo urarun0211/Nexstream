@@ -878,6 +878,10 @@ export default function App() {
                     <p className="text-xs text-gray-500">
                       If you encounter errors like "Requested format is not available" or "Sign in to confirm you're not a bot", updating to the latest release of the downloader engine (yt-dlp) usually resolves them.
                     </p>
+                    <div className="flex justify-between items-center text-xs text-gray-400 py-1.5 px-3 bg-gray-950/40 rounded-lg border border-gray-900 mb-2">
+                      <span className="font-medium text-gray-500">Core Engine Version:</span>
+                      <span className="font-mono text-purple-400 font-bold">{status.ytDlpVersion || 'Detecting...'}</span>
+                    </div>
                     <button
                       type="button"
                       onClick={handleUpdateCore}

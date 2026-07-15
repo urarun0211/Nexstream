@@ -46,7 +46,22 @@ function getGlobalArgs() {
   return args;
 }
 
-// Default downloads directory resolves to C:\Users\ARUN\Downloads on Windows
+let ytDlpVersion = 'Unknown';
+
+function checkYtDlpVersion() {
+  const { ytDlpPath } = getBinaries();
+  if (ytDlpPath && fs.existsSync(ytDlpPath)) {
+    exec(`"${ytDlpPath}" --version`, (err, stdout) => {
+      if (!err && stdout) {
+        ytDlpVersion = stdout.trim();
+        console.log(`yt-dlp version detected: ${ytDlpVersion}`);
+      } else {
+        console.error('Failed to detect yt-dlp version:', err);
+      }
+    });
+  }
+}
+
 const defaultDownloadsDir = path.join(os.homedir(), 'Downloads');
 let currentDownloadsDir = defaultDownloadsDir;
 
@@ -81,6 +96,7 @@ ensureBinaries((downloaded, total) => {
   binarySetupProgress.status = 'ready';
   binarySetupProgress.percent = 100;
   console.log('Binaries initialized successfully.');
+  checkYtDlpVersion();
 }).catch((err) => {
   binarySetupProgress.status = 'error';
   binarySetupProgress.error = err.message;
@@ -115,6 +131,7 @@ app.post('/api/binaries/update', verifyPassword, (req, res) => {
     binarySetupProgress.status = 'ready';
     binarySetupProgress.percent = 100;
     console.log('Binaries updated/re-downloaded successfully.');
+    checkYtDlpVersion();
   }).catch((err) => {
     binarySetupProgress.status = 'error';
     binarySetupProgress.error = err.message;
@@ -126,7 +143,10 @@ app.post('/api/binaries/update', verifyPassword, (req, res) => {
 
 // Endpoint to get binary setup status
 app.get('/api/status', (req, res) => {
-  res.json(binarySetupProgress);
+  res.json({
+    ...binarySetupProgress,
+    ytDlpVersion
+  });
 });
 
 // Endpoint to get or set download folder path configuration
