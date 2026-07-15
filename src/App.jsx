@@ -36,6 +36,8 @@ export default function App() {
   const [cookiesText, setCookiesText] = useState('');
   const [cookiesStatus, setCookiesStatus] = useState({ configured: false, preview: 'Not configured' });
   const [savingCookies, setSavingCookies] = useState(false);
+  const [isPasswordRequired, setIsPasswordRequired] = useState(false);
+  const [modalPassword, setModalPassword] = useState('');
   
   // Media info state
   const [mediaInfo, setMediaInfo] = useState(null); // { type: 'video' | 'playlist', title, thumbnail, formats, entries... }
@@ -57,6 +59,7 @@ export default function App() {
         const res = await fetch('/api/config');
         const data = await res.json();
         setDownloadPath(data.downloadPath);
+        setIsPasswordRequired(!!data.passwordRequired);
       } catch (err) {
         console.error('Failed to fetch config:', err);
       }
@@ -78,13 +81,20 @@ export default function App() {
 
   const handleSelectFolder = async () => {
     try {
-      const res = await fetch('/api/select-folder', { method: 'POST' });
+      const res = await fetch('/api/select-folder', { 
+        method: 'POST',
+        headers: { 'x-settings-password': modalPassword }
+      });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to select folder.');
+      }
       if (data.success && data.path) {
         setDownloadPath(data.path);
       }
     } catch (err) {
       console.error('Failed to select folder:', err);
+      setToast({ message: err.message, type: 'error' });
     }
   };
 
@@ -93,7 +103,10 @@ export default function App() {
     try {
       const res = await fetch('/api/cookies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-settings-password': modalPassword
+        },
         body: JSON.stringify({ cookiesText })
       });
       const data = await res.json();
@@ -116,7 +129,10 @@ export default function App() {
     try {
       const res = await fetch('/api/cookies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-settings-password': modalPassword
+        },
         body: JSON.stringify({ cookiesText: '' })
       });
       const data = await res.json();
@@ -768,6 +784,22 @@ export default function App() {
             {/* Modal Content */}
             <div className="p-6 flex-grow overflow-y-auto space-y-5">
               
+              {isPasswordRequired && (
+                <div className="space-y-1.5 p-4 rounded-xl bg-gray-950 border border-gray-800/80 animate-fade-in mb-2">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Settings Password</label>
+                  <input
+                    type="password"
+                    placeholder="Enter settings password..."
+                    value={modalPassword}
+                    onChange={(e) => setModalPassword(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-800 focus:border-purple-500 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-purple-500/20"
+                  />
+                  <p className="text-[10px] text-gray-500">
+                    Administrator password required to modify global configurations.
+                  </p>
+                </div>
+              )}
+
               {settingsTab === 'general' && (
                 <div className="space-y-4 animate-fade-in">
                   <div className="space-y-2">

@@ -13,8 +13,33 @@ const projectRoot = path.resolve(__dirname, '..');
 
 const cookiesFilePath = path.join(projectRoot, 'cookies.txt');
 
+const settingsPassword = process.env.SETTINGS_PASSWORD || '';
+
+// Load cookies from environment variable if present on startup
+if (process.env.YOUTUBE_COOKIES) {
+  try {
+    fs.writeFileSync(cookiesFilePath, process.env.YOUTUBE_COOKIES.trim() + '\n', 'utf8');
+    console.log('Successfully loaded global cookies from YOUTUBE_COOKIES environment variable.');
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(cookiesFilePath, 0o600);
+      } catch (e) {}
+    }
+  } catch (err) {
+    console.error('Failed to save cookies from YOUTUBE_COOKIES environment variable:', err);
+  }
+}
+
+function verifyPassword(req, res, next) {
+  if (settingsPassword && req.headers['x-settings-password'] !== settingsPassword) {
+    return res.status(401).json({ error: 'Incorrect settings password.' });
+  }
+  next();
+}
+
 function getCookieArgs() {
   if (fs.existsSync(cookiesFilePath)) {
+    console.log('Using cookies.txt for yt-dlp authentication.');
     return ['--cookies', cookiesFilePath];
   }
   return [];
@@ -68,10 +93,13 @@ app.get('/api/status', (req, res) => {
 
 // Endpoint to get or set download folder path configuration
 app.get('/api/config', (req, res) => {
-  res.json({ downloadPath: currentDownloadsDir });
+  res.json({ 
+    downloadPath: currentDownloadsDir,
+    passwordRequired: !!settingsPassword
+  });
 });
 
-app.post('/api/config', (req, res) => {
+app.post('/api/config', verifyPassword, (req, res) => {
   const { downloadPath } = req.body;
   if (downloadPath && fs.existsSync(downloadPath)) {
     currentDownloadsDir = downloadPath;
@@ -98,7 +126,7 @@ app.get('/api/cookies', (req, res) => {
 });
 
 // Endpoint to save or clear cookies configuration
-app.post('/api/cookies', (req, res) => {
+app.post('/api/cookies', verifyPassword, (req, res) => {
   const { cookiesText } = req.body;
 
   if (!cookiesText || !cookiesText.trim()) {
@@ -135,7 +163,7 @@ app.post('/api/cookies', (req, res) => {
 });
 
 // Endpoint to open native Win32 folder browser dialog and return selected path
-app.post('/api/select-folder', (req, res) => {
+app.post('/api/select-folder', verifyPassword, (req, res) => {
   if (process.platform !== 'win32') {
     return res.status(501).json({ error: 'Folder selection is only supported on Windows' });
   }
