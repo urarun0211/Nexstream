@@ -339,7 +339,9 @@ app.get('/api/info', async (req, res) => {
   child.on('close', (code) => {
     if (code !== 0) {
       console.error('yt-dlp failed to extract metadata:', stderr);
-      return res.status(500).json({ error: 'Failed to extract video info. Make sure the URL is valid.' });
+      const errLines = stderr.split('\n').map(l => l.trim()).filter(Boolean);
+      const cleanErr = errLines.find(l => l.includes('ERROR:')) || errLines[0] || 'Failed to extract video info.';
+      return res.status(500).json({ error: cleanErr.replace(/ERROR:\s*\[youtube\]\s*/gi, '') });
     }
 
     try {
