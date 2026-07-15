@@ -38,6 +38,7 @@ export default function App() {
   const [savingCookies, setSavingCookies] = useState(false);
   const [isPasswordRequired, setIsPasswordRequired] = useState(false);
   const [modalPassword, setModalPassword] = useState('');
+  const [updatingCore, setUpdatingCore] = useState(false);
   
   // Media info state
   const [mediaInfo, setMediaInfo] = useState(null); // { type: 'video' | 'playlist', title, thumbnail, formats, entries... }
@@ -147,6 +148,48 @@ export default function App() {
       setToast({ message: `Error clearing cookies: ${err.message}`, type: 'error' });
     } finally {
       setSavingCookies(false);
+    }
+  };
+
+  const handleUpdateCore = async () => {
+    setUpdatingCore(true);
+    setToast({ message: 'Downloader core update initiated...', type: 'info' });
+    try {
+      const res = await fetch('/api/binaries/update', {
+        method: 'POST',
+        headers: { 'x-settings-password': modalPassword }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setToast({ message: 'Downloader core update started in background!', type: 'info' });
+        
+        // Poll status to see download progress in real-time
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch('/api/status');
+            const statusData = await statusRes.json();
+            setStatus(statusData);
+            
+            if (statusData.status === 'ready') {
+              clearInterval(pollInterval);
+              setToast({ message: 'Downloader core updated successfully to latest version!', type: 'success' });
+              setUpdatingCore(false);
+            } else if (statusData.status === 'error') {
+              clearInterval(pollInterval);
+              setToast({ message: `Update failed: ${statusData.error}`, type: 'error' });
+              setUpdatingCore(false);
+            }
+          } catch (e) {
+            clearInterval(pollInterval);
+            setUpdatingCore(false);
+          }
+        }, 1500);
+      } else {
+        throw new Error(data.error || 'Failed to start update.');
+      }
+    } catch (err) {
+      setToast({ message: `Error updating core: ${err.message}`, type: 'error' });
+      setUpdatingCore(false);
     }
   };
 
@@ -828,6 +871,39 @@ export default function App() {
                     <p className="text-[10px] text-gray-600 italic">
                       Note: Folder picker works on Windows local server only. For hosting platforms like Render, the default project download path is used.
                     </p>
+                  </div>
+
+                  <div className="space-y-2 border-t border-gray-800/60 pt-4 mt-4 animate-fade-in">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Downloader Core Engine</label>
+                    <p className="text-xs text-gray-500">
+                      If you encounter errors like "Requested format is not available" or "Sign in to confirm you're not a bot", updating to the latest release of the downloader engine (yt-dlp) usually resolves them.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleUpdateCore}
+                      disabled={updatingCore || status.status === 'downloading'}
+                      className="w-full py-2.5 bg-purple-950/20 hover:bg-purple-900/30 border border-purple-800/40 hover:border-purple-700/60 text-purple-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {updatingCore || status.status === 'downloading' ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Updating Core ({status.percent}%)...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Update Downloader Core (yt-dlp)</span>
+                        </>
+                      )}
+                    </button>
+                    {status.status === 'downloading' && (
+                      <div className="w-full bg-gray-950 rounded-full h-1.5 overflow-hidden border border-gray-800 mt-2">
+                        <div 
+                          className="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full transition-all duration-300"
+                          style={{ width: `${status.percent}%` }}
+                        ></div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

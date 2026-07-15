@@ -37,12 +37,13 @@ function verifyPassword(req, res, next) {
   next();
 }
 
-function getCookieArgs() {
+function getGlobalArgs() {
+  const args = ['--ignore-config'];
   if (fs.existsSync(cookiesFilePath)) {
     console.log('Using cookies.txt for yt-dlp authentication.');
-    return ['--cookies', cookiesFilePath];
+    args.push('--cookies', cookiesFilePath);
   }
-  return [];
+  return args;
 }
 
 // Default downloads directory resolves to C:\Users\ARUN\Downloads on Windows
@@ -84,6 +85,43 @@ ensureBinaries((downloaded, total) => {
   binarySetupProgress.status = 'error';
   binarySetupProgress.error = err.message;
   console.error('Failed to setup binaries:', err);
+});
+
+// Endpoint to force re-download / update yt-dlp binary
+app.post('/api/binaries/update', verifyPassword, (req, res) => {
+  const { ytDlpPath } = getBinaries();
+  if (ytDlpPath && fs.existsSync(ytDlpPath)) {
+    try {
+      fs.unlinkSync(ytDlpPath);
+      console.log('Deleted old yt-dlp binary to force update.');
+    } catch (err) {
+      console.error('Failed to delete old binary:', err);
+      return res.status(500).json({ error: 'Failed to delete old binary.' });
+    }
+  }
+
+  // Trigger setup in background
+  binarySetupProgress.status = 'downloading';
+  binarySetupProgress.downloadedBytes = 0;
+  binarySetupProgress.percent = 0;
+  binarySetupProgress.error = null;
+
+  ensureBinaries((downloaded, total) => {
+    binarySetupProgress.status = 'downloading';
+    binarySetupProgress.downloadedBytes = downloaded;
+    binarySetupProgress.totalBytes = total;
+    binarySetupProgress.percent = Math.round((downloaded / total) * 100);
+  }).then(() => {
+    binarySetupProgress.status = 'ready';
+    binarySetupProgress.percent = 100;
+    console.log('Binaries updated/re-downloaded successfully.');
+  }).catch((err) => {
+    binarySetupProgress.status = 'error';
+    binarySetupProgress.error = err.message;
+    console.error('Failed to re-download binaries:', err);
+  });
+
+  res.json({ success: true, message: 'Update/re-download started in background.' });
 });
 
 // Endpoint to get binary setup status
@@ -233,7 +271,9 @@ app.get('/api/info', async (req, res) => {
 
   console.log(`Extracting metadata (PlaylistMode: ${playlistMode}) for URL: ${targetUrl}`);
 
-  const child = spawn(ytDlpPath, [...getCookieArgs(), ...processArgs]);
+  const spawnArgs = [...getGlobalArgs(), ...processArgs];
+  console.log(`Spawning yt-dlp metadata extraction: ${spawnArgs.join(' ')}`);
+  const child = spawn(ytDlpPath, spawnArgs);
   let stdout = '';
   let stderr = '';
 
@@ -292,7 +332,17 @@ app.get('/api/info', async (req, res) => {
               });
             }
           }
-        });
+        if (cleanFormats.length === 0) {
+          cleanFormats.push({
+            formatId: 'best',
+            resolution: 'Best Quality',
+            ext: 'mp4',
+            filesize: null,
+            label: 'Best Available Quality (MP4)',
+            type: 'video',
+            height: 720
+          });
+        }
 
         // Add Audio only option (bestaudio)
         cleanFormats.push({
@@ -375,7 +425,7 @@ function startSingleDownload(downloadId) {
 
   updateProgress({ status: 'downloading' });
 
-  const child = spawn(ytDlpPath, [...getCookieArgs(), ...state.args]);
+  const child = spawn(ytDlpPath, [...getGlobalArgs(), ...state.args]);
   state.child = child;
 
   let finalFilePath = '';
@@ -503,7 +553,7 @@ async function startPlaylistDownload(downloadId) {
         const fullUrl = video.url.includes('http') ? video.url : `https://www.youtube.com/watch?v=${video.id}`;
         args.push(fullUrl);
 
-        const child = spawn(ytDlpPath, [...getCookieArgs(), ...args]);
+        const child = spawn(ytDlpPath, [...getGlobalArgs(), ...args]);
         state.child = child;
 
         let finalFilePath = '';
@@ -817,7 +867,7 @@ app.get('/api/download-direct', (req, res) => {
 
     args.push(url);
 
-    const child = spawn(ytDlpPath, [...getCookieArgs(), ...args], {
+    const child = spawn(ytDlpPath, [...getGlobalArgs(), ...args], {
       env: { ...process.env, PYTHONUNBUFFERED: '1' }
     });
     child.stdout.pipe(res);
@@ -834,7 +884,7 @@ app.get('/api/download-direct', (req, res) => {
     // 2. HD format: fetch streaming URLs and pipe merged output from ffmpeg directly!
     console.log(`HD format detected. Fetching URLs for on-the-fly merge stream: ${filename}`);
 
-    const gChild = spawn(ytDlpPath, [...getCookieArgs(), '-g', '-f', cleanFormatId, '--no-playlist', url]);
+    const gChild = spawn(ytDlpPath, [...getGlobalArgs(), '-g', '-f', cleanFormatId, '--no-playlist', url]);
     let stdoutData = '';
     let stderrData = '';
 
