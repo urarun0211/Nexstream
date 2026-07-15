@@ -15,10 +15,43 @@ const cookiesFilePath = path.join(projectRoot, 'cookies.txt');
 
 const settingsPassword = process.env.SETTINGS_PASSWORD || '';
 
+function writeCookiesFile(text) {
+  let cleanedText = text.trim();
+  
+  if (cleanedText.startsWith('[') || cleanedText.startsWith('{')) {
+    console.warn('WARNING: Cookies text appears to be JSON format. yt-dlp requires Netscape HTTP Cookie format!');
+    fs.writeFileSync(cookiesFilePath, cleanedText + '\n', 'utf8');
+    return;
+  }
+
+  const lines = cleanedText.split('\n');
+  let spaceConvertedCount = 0;
+  const processedLines = lines.map(line => {
+    if (line.startsWith('#') || !line.trim()) return line;
+    
+    // Check if it uses spaces instead of tabs
+    if (!line.includes('\t')) {
+      const parts = line.split(/\s+/);
+      if (parts.length >= 7) {
+        spaceConvertedCount++;
+        return parts.slice(0, 7).join('\t'); // Netscape requires 7 fields
+      }
+    }
+    return line;
+  });
+
+  if (spaceConvertedCount > 0) {
+    console.log(`Auto-converted ${spaceConvertedCount} space-separated cookie lines to Netscape tab-separated format.`);
+  }
+
+  cleanedText = processedLines.join('\n') + '\n';
+  fs.writeFileSync(cookiesFilePath, cleanedText, 'utf8');
+}
+
 // Load cookies from environment variable if present on startup
 if (process.env.YOUTUBE_COOKIES) {
   try {
-    fs.writeFileSync(cookiesFilePath, process.env.YOUTUBE_COOKIES.trim() + '\n', 'utf8');
+    writeCookiesFile(process.env.YOUTUBE_COOKIES);
     console.log('Successfully loaded global cookies from YOUTUBE_COOKIES environment variable.');
     if (process.platform !== 'win32') {
       try {
@@ -38,7 +71,10 @@ function verifyPassword(req, res, next) {
 }
 
 function getGlobalArgs() {
-  const args = ['--ignore-config'];
+  const args = [
+    '--ignore-config',
+    '--extractor-args', 'youtube:player_client=android,web'
+  ];
   if (fs.existsSync(cookiesFilePath)) {
     console.log('Using cookies.txt for yt-dlp authentication.');
     args.push('--cookies', cookiesFilePath);
@@ -201,7 +237,7 @@ app.post('/api/cookies', verifyPassword, (req, res) => {
   }
 
   try {
-    fs.writeFileSync(cookiesFilePath, cookiesText.trim() + '\n', 'utf8');
+    writeCookiesFile(cookiesText);
     console.log('Cookies file updated successfully.');
     
     // Set restricted permissions if not on Windows
