@@ -26,3 +26,7 @@ dist-ssr
 # Platform-specific binaries
 bin/yt-dlp
 bin/yt-dlp_macos
+
+# YouTube cookies
+cookies.txt
+

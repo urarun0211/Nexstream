@@ -11,6 +11,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
+const cookiesFilePath = path.join(projectRoot, 'cookies.txt');
+
+function getCookieArgs() {
+  if (fs.existsSync(cookiesFilePath)) {
+    return ['--cookies', cookiesFilePath];
+  }
+  return [];
+}
+
 // Default downloads directory resolves to C:\Users\ARUN\Downloads on Windows
 const defaultDownloadsDir = path.join(os.homedir(), 'Downloads');
 let currentDownloadsDir = defaultDownloadsDir;
@@ -70,6 +79,59 @@ app.post('/api/config', (req, res) => {
     return res.json({ success: true, downloadPath: currentDownloadsDir });
   }
   res.status(400).json({ error: 'Invalid directory path.' });
+});
+
+// Endpoint to get cookies configuration status
+app.get('/api/cookies', (req, res) => {
+  const exists = fs.existsSync(cookiesFilePath);
+  let preview = 'Not configured';
+  if (exists) {
+    try {
+      const content = fs.readFileSync(cookiesFilePath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+      preview = `Configured (${lines.length} cookies loaded)`;
+    } catch (err) {
+      preview = 'Error reading cookies file';
+    }
+  }
+  res.json({ configured: exists, preview });
+});
+
+// Endpoint to save or clear cookies configuration
+app.post('/api/cookies', (req, res) => {
+  const { cookiesText } = req.body;
+
+  if (!cookiesText || !cookiesText.trim()) {
+    if (fs.existsSync(cookiesFilePath)) {
+      try {
+        fs.unlinkSync(cookiesFilePath);
+        console.log('Cookies file deleted.');
+      } catch (err) {
+        console.error('Failed to delete cookies file:', err);
+        return res.status(500).json({ error: 'Failed to delete cookies file.' });
+      }
+    }
+    return res.json({ success: true, configured: false, preview: 'Not configured' });
+  }
+
+  try {
+    fs.writeFileSync(cookiesFilePath, cookiesText.trim() + '\n', 'utf8');
+    console.log('Cookies file updated successfully.');
+    
+    // Set restricted permissions if not on Windows
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(cookiesFilePath, 0o600);
+      } catch (e) {}
+    }
+
+    const lines = cookiesText.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+    const preview = `Configured (${lines.length} cookies loaded)`;
+    res.json({ success: true, configured: true, preview });
+  } catch (err) {
+    console.error('Failed to write cookies file:', err);
+    res.status(500).json({ error: 'Failed to save cookies on server.' });
+  }
 });
 
 // Endpoint to open native Win32 folder browser dialog and return selected path
@@ -143,7 +205,7 @@ app.get('/api/info', async (req, res) => {
 
   console.log(`Extracting metadata (PlaylistMode: ${playlistMode}) for URL: ${targetUrl}`);
 
-  const child = spawn(ytDlpPath, processArgs);
+  const child = spawn(ytDlpPath, [...getCookieArgs(), ...processArgs]);
   let stdout = '';
   let stderr = '';
 
@@ -285,7 +347,7 @@ function startSingleDownload(downloadId) {
 
   updateProgress({ status: 'downloading' });
 
-  const child = spawn(ytDlpPath, state.args);
+  const child = spawn(ytDlpPath, [...getCookieArgs(), ...state.args]);
   state.child = child;
 
   let finalFilePath = '';
@@ -413,7 +475,7 @@ async function startPlaylistDownload(downloadId) {
         const fullUrl = video.url.includes('http') ? video.url : `https://www.youtube.com/watch?v=${video.id}`;
         args.push(fullUrl);
 
-        const child = spawn(ytDlpPath, args);
+        const child = spawn(ytDlpPath, [...getCookieArgs(), ...args]);
         state.child = child;
 
         let finalFilePath = '';
@@ -727,7 +789,7 @@ app.get('/api/download-direct', (req, res) => {
 
     args.push(url);
 
-    const child = spawn(ytDlpPath, args, {
+    const child = spawn(ytDlpPath, [...getCookieArgs(), ...args], {
       env: { ...process.env, PYTHONUNBUFFERED: '1' }
     });
     child.stdout.pipe(res);
@@ -744,7 +806,7 @@ app.get('/api/download-direct', (req, res) => {
     // 2. HD format: fetch streaming URLs and pipe merged output from ffmpeg directly!
     console.log(`HD format detected. Fetching URLs for on-the-fly merge stream: ${filename}`);
 
-    const gChild = spawn(ytDlpPath, ['-g', '-f', cleanFormatId, '--no-playlist', url]);
+    const gChild = spawn(ytDlpPath, [...getCookieArgs(), '-g', '-f', cleanFormatId, '--no-playlist', url]);
     let stdoutData = '';
     let stderrData = '';
 

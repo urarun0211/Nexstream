@@ -15,7 +15,11 @@ import {
   ArrowRight,
   Sparkles,
   Pause,
-  Play
+  Play,
+  Settings,
+  X,
+  Trash2,
+  HelpCircle
 } from 'lucide-react';
 
 export default function App() {
@@ -25,6 +29,13 @@ export default function App() {
   const [error, setError] = useState(null);
   const [downloadPath, setDownloadPath] = useState('');
   const [playlistMode, setPlaylistMode] = useState(false);
+  
+  // Settings & Cookies States
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('general'); // 'general' | 'cookies'
+  const [cookiesText, setCookiesText] = useState('');
+  const [cookiesStatus, setCookiesStatus] = useState({ configured: false, preview: 'Not configured' });
+  const [savingCookies, setSavingCookies] = useState(false);
   
   // Media info state
   const [mediaInfo, setMediaInfo] = useState(null); // { type: 'video' | 'playlist', title, thumbnail, formats, entries... }
@@ -39,7 +50,7 @@ export default function App() {
   const progressSource = useRef(null);
   const triggeredDownloads = useRef(new Set());
 
-  // Fetch download folder path config on load
+  // Fetch config and cookies status on load
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -50,7 +61,19 @@ export default function App() {
         console.error('Failed to fetch config:', err);
       }
     };
+    
+    const fetchCookiesStatus = async () => {
+      try {
+        const res = await fetch('/api/cookies');
+        const data = await res.json();
+        setCookiesStatus({ configured: data.configured, preview: data.preview });
+      } catch (err) {
+        console.error('Failed to fetch cookies status:', err);
+      }
+    };
+
     fetchConfig();
+    fetchCookiesStatus();
   }, []);
 
   const handleSelectFolder = async () => {
@@ -62,6 +85,52 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to select folder:', err);
+    }
+  };
+
+  const handleSaveCookies = async () => {
+    setSavingCookies(true);
+    try {
+      const res = await fetch('/api/cookies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookiesText })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCookiesStatus({ configured: data.configured, preview: data.preview });
+        setToast({ message: cookiesText.trim() ? 'Cookies saved successfully!' : 'Cookies cleared successfully!', type: 'success' });
+        if (!cookiesText.trim()) setCookiesText('');
+      } else {
+        throw new Error(data.error || 'Failed to save cookies.');
+      }
+    } catch (err) {
+      setToast({ message: `Error saving cookies: ${err.message}`, type: 'error' });
+    } finally {
+      setSavingCookies(false);
+    }
+  };
+
+  const handleClearCookies = async () => {
+    setSavingCookies(true);
+    try {
+      const res = await fetch('/api/cookies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookiesText: '' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCookiesStatus({ configured: false, preview: 'Not configured' });
+        setCookiesText('');
+        setToast({ message: 'Cookies cleared successfully!', type: 'success' });
+      } else {
+        throw new Error(data.error || 'Failed to clear cookies.');
+      }
+    } catch (err) {
+      setToast({ message: `Error clearing cookies: ${err.message}`, type: 'error' });
+    } finally {
+      setSavingCookies(false);
     }
   };
 
@@ -309,6 +378,16 @@ export default function App() {
             Nex<span className="gradient-text">Stream</span>
           </span>
         </div>
+
+        <button
+          id="btn-open-settings"
+          type="button"
+          onClick={() => setIsSettingsOpen(true)}
+          className="flex items-center justify-center p-2.5 rounded-xl bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 transition-all cursor-pointer shadow-md hover:rotate-90 duration-500"
+          title="Settings"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       </header>
 
       {/* Main Content */}
@@ -636,6 +715,164 @@ export default function App() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel max-w-lg w-full rounded-2xl overflow-hidden shadow-2xl relative flex flex-col max-h-[85vh] border border-gray-800/80 animate-scale-up">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-800/60 bg-gray-950/40">
+              <div className="flex items-center space-x-2">
+                <Settings className="w-5 h-5 text-purple-400 animate-pulse" />
+                <h2 className="text-lg font-bold text-white font-outfit">Configuration & Settings</h2>
+              </div>
+              <button
+                id="btn-close-settings"
+                type="button"
+                onClick={() => setIsSettingsOpen(false)}
+                className="p-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-400 hover:text-white cursor-pointer transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex border-b border-gray-800/40 bg-gray-950/20 px-4">
+              <button
+                type="button"
+                onClick={() => setSettingsTab('general')}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 cursor-pointer transition-all ${
+                  settingsTab === 'general'
+                    ? 'border-purple-500 text-purple-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                General Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettingsTab('cookies')}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 cursor-pointer transition-all ${
+                  settingsTab === 'cookies'
+                    ? 'border-purple-500 text-purple-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                YouTube Cookies
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 flex-grow overflow-y-auto space-y-5">
+              
+              {settingsTab === 'general' && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Downloads Directory</label>
+                    <p className="text-xs text-gray-500">
+                      Specify the folder on the server where downloaded videos/playlists will be saved.
+                    </p>
+                    <div className="flex gap-2 items-center mt-1">
+                      <input
+                        type="text"
+                        readOnly
+                        value={downloadPath || 'Not Configured'}
+                        className="flex-grow bg-gray-950/50 border border-gray-800 rounded-xl px-3 py-2.5 text-xs text-gray-300 select-all focus:outline-none"
+                      />
+                      {/* Windows Directory Dialog trigger */}
+                      <button
+                        type="button"
+                        onClick={handleSelectFolder}
+                        className="px-3.5 py-2.5 bg-gray-900 border border-gray-800 hover:border-gray-700 text-gray-200 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Choose Folder dialog works only on Windows"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>Select</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-gray-600 italic">
+                      Note: Folder picker works on Windows local server only. For hosting platforms like Render, the default project download path is used.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'cookies' && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="p-3.5 rounded-xl bg-purple-950/15 border border-purple-900/30 text-xs text-purple-300 flex items-start gap-2.5 leading-relaxed">
+                    <HelpCircle className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-purple-200 mb-1">Bypass "Confirm you're not a bot" Blocking</p>
+                      <p className="mb-2">
+                        YouTube rate-limits and blocks server hosting IPs (like Render). Pasting your session cookies forces yt-dlp to authenticate as a browser.
+                      </p>
+                      <ol className="list-decimal pl-4 space-y-1 text-purple-400/80 font-medium">
+                        <li>Install the Chrome/Firefox extension <strong>"Get cookies.txt LOCALLY"</strong>.</li>
+                        <li>Go to YouTube, login, click the extension icon and copy the cookies content in <strong>Netscape</strong> format.</li>
+                        <li>Paste that plain text contents below and save.</li>
+                      </ol>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Paste Netscape Cookies Text</label>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        cookiesStatus.configured 
+                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/30' 
+                          : 'bg-rose-950 text-rose-400 border border-rose-800/30'
+                      }`}>
+                        {cookiesStatus.preview}
+                      </span>
+                    </div>
+                    
+                    <textarea
+                      value={cookiesText}
+                      onChange={(e) => setCookiesText(e.target.value)}
+                      placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;1735680000&#9;SID&#9;..."
+                      className="w-full h-36 bg-gray-950/60 border border-gray-800/80 focus:border-purple-500 rounded-xl p-3 text-[11px] font-mono text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-purple-500/20"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    {cookiesStatus.configured && (
+                      <button
+                        type="button"
+                        onClick={handleClearCookies}
+                        disabled={savingCookies}
+                        className="px-4 py-2.5 bg-rose-950/40 hover:bg-rose-950/70 border border-rose-900/50 text-rose-200 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Cookies</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSaveCookies}
+                      disabled={savingCookies}
+                      className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-500 hover:to-pink-400 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {savingCookies ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Save Cookies</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
         </div>
       )}
     </div>
